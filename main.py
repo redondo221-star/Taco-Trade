@@ -63,15 +63,19 @@ if 'strategy_result' in st.session_state:
     with col1:
         if st.button("買いの根拠を詳しく聞く"):
             try:
+                genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(model_name='gemini-1.5-flash')
                 res = model.generate_content(f"{st.session_state['current_stock']}について、なぜその買い時価格が妥当なのか、裏付けとなる指標（PERや移動平均線など）を詳しく解説してください。")
                 st.info(res.text)
-            except Exception as e: st.error(e)
+            except Exception as e:
+                st.error(e)
             
     with col2:
         if st.button("下落時の対処法を聞く"):
             try:
+                genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(model_name='gemini-1.5-flash')
                 res = model.generate_content(f"{st.session_state['current_stock']}の株価が想定外に下落した場合、どこでナンピンすべきか、あるいは完全に撤退すべきかの判断基準を教えてください。")
                 st.warning(res.text)
-        except Exception as e: st.error(e)
+            except Exception as e:
+                st.error(e)
