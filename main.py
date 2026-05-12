@@ -23,7 +23,7 @@ if st.button("タコ足分析を開始する"):
             genai.configure(api_key=api_key)
             
             # モデルを 'gemini-1.5-flash' に固定（これが一番速くて安定しています）
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-pro')
             
             with st.spinner(f'銘柄 {stock_code} をタコ足分析中... 8本の足で調査しています。'):
                 # AIへの命令
