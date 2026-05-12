@@ -17,37 +17,35 @@ if st.button("タコ足分析を開始する"):
         st.error("APIキーを入力してください。")
     else:
         try:
-            # 最新のAPI設定
             genai.configure(api_key=api_key)
             
-            # 【重要】2026年現在、最も推奨されるモデル名に修正
-            # エラーが出にくい 'gemini-1.5-flash' を使用します
-            model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+            # 【究極の対策】利用可能なモデルを自動で検索して、最初に見つかった動くモデルを使う
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             
-            with st.spinner(f'銘柄 {stock_code} をタコ足分析中...'):
-                prompt = f"""
-                あなたは凄腕トレーダー「タコ」です。
-                銘柄コード【{stock_code}】について、以下の3点からプロの分析を行ってください。
-                1. 【ファンダメンタル】業績・配当
-                2. 【テクニカル】売り時・買い時
-                3. 【慎重派の視点】リスク要因
-                結論はタコらしくユーモア（語尾に「〜だタコ」など）を交えて日本語で回答してください。
-                """
+            if not available_models:
+                st.error("利用可能なモデルが見つかりませんでした。APIキーの権限を確認してください。")
+            else:
+                # 優先的に使いたいモデルを探す（flashがあればそれを、なければ最初に見つかったものを採用）
+                target_model = next((m for m in available_models if 'flash' in m), available_models[0])
+                model = genai.GenerativeModel(model_name=target_model)
                 
-                # 世代生成の実行
-                response = model.generate_content(prompt)
-                
-                if response:
+                with st.spinner(f'タコが {target_model} を使って {stock_code} を調査中...'):
+                    prompt = f"""
+                    あなたは凄腕トレーダー「タコ」です。
+                    銘柄コード【{stock_code}】について、以下の3点からプロの分析を行ってください。
+                    1. 【ファンダメンタル】業績・配当
+                    2. 【テクニカル】売り時・買い時
+                    3. 【慎重派の視点】リスク要因
+                    結論はタコらしくユーモア（語尾に「〜だタコ」など）を交えて日本語で回答してください。
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    
                     st.markdown("---")
                     st.subheader(f"📊 {stock_code} の分析結果")
                     st.write(response.text)
+                    st.info(f"（使用中のモデル: {target_model}）")
                 
         except Exception as e:
-            # まだエラーが出る場合は、モデル名の指定を 'models/gemini-1.5-flash' に自動切り替え
-            try:
-                model = genai.GenerativeModel(model_name='models/gemini-1.5-flash')
-                response = model.generate_content(prompt)
-                st.write(response.text)
-            except:
-                st.error(f"タコの足がもつれました: {str(e)}")
-                st.info("APIキーの権限、またはモデル名の指定に問題がある可能性があります。")
+            st.error(f"タコの足がもつれました: {str(e)}")
+            st.info("APIキーを正しく入力し、Enterを押してからボタンをクリックしてください。")
