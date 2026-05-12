@@ -16,25 +16,31 @@ st.markdown("### 1. 銘柄情報の入力")
 folder_text = st.text_area(
     "日経の銘柄フォルダ等の情報をここに貼り付けてください（コード、銘柄名、株価等）", 
     height=150, 
-    placeholder="例: 9759 NSD 2,844 ..."
+    placeholder="例: 9759 プライム NSD 2,844 ..."
 )
 
 if st.button("リストから銘柄を抽出する"):
     if folder_text:
         st.session_state['raw_list'] = folder_text
         
-        # 【改良】コードと企業名のペアを抽出するロジック
-        # 4桁の数字の後に続く日本語やアルファベットを企業名として取得
-        matches = re.findall(r'(\d{4})\s+([^\s\d]+)', folder_text)
+        # 【修正】市場区分（プライム等）を飛び越えて、その次の企業名を抽出するロジック
+        # 1. 4桁の数字 2. 任意の文字（市場区分） 3. 目的の企業名 という並びに対応
+        matches = re.findall(r'(\d{4})\s+[^\s\d]+\s+([^\s\d]+)', folder_text)
+        
         if matches:
             # 「コード 企業名」の形式でリスト化
             st.session_state['display_list'] = [f"{m[0]} {m[1]}" for m in matches]
             st.success(f"{len(matches)}件の銘柄を検出しました。")
         else:
-            # 万が一企業名が取れなかった場合はコードのみ抽出
-            codes = sorted(list(set(re.findall(r'\b\d{4}\b', folder_text))))
-            st.session_state['display_list'] = codes
-            st.warning("企業名の特定が難しいため、コードのみリスト化しました。")
+            # 上記のパターンで見つからない場合、以前のシンプルな抽出を試行
+            matches_simple = re.findall(r'(\d{4})\s+([^\s\d]+)', folder_text)
+            if matches_simple:
+                st.session_state['display_list'] = [f"{m[0]} {m[1]}" for m in matches_simple]
+                st.success(f"{len(matches_simple)}件の銘柄を検出しました。")
+            else:
+                codes = sorted(list(set(re.findall(r'\b\d{4}\b', folder_text))))
+                st.session_state['display_list'] = codes
+                st.warning("企業名の特定が難しいため、コードのみリスト化しました。")
     else:
         st.warning("テキストを貼り付けてください。")
 
@@ -49,8 +55,6 @@ if 'display_list' in st.session_state:
         else:
             try:
                 genai.configure(api_key=api_key)
-                
-                # 利用可能な最新モデルを動的に取得（エラー回避）
                 model_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 target_model_name = next((m for m in model_list if 'gemini-1.5-flash' in m), model_list[0])
                 model = genai.GenerativeModel(model_name=target_model_name)
