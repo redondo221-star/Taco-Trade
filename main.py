@@ -4,21 +4,20 @@ from openai import OpenAI
 st.set_page_config(page_title="タコ・トレード", page_icon="🐙")
 st.title("🐙 タコ・トレード分析室")
 
-# サイドバーで設定
-st.sidebar.header("設定")
-api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+# --- APIキーの設定 ---
+# 1. Secretsにあるか確認、なければサイドバーから入力
+api_key = st.secrets.get("OPENAI_API_KEY") or st.sidebar.text_input("OpenAI API Key", type="password")
 
 stock_code = st.text_input("分析したい銘柄コードを入力（例: 9759）", value="9759")
 
 if st.button("タコ足分析を開始する"):
     if not api_key:
-        st.error("APIキーを入力してください。")
+        st.error("APIキーが設定されていません。Secretsに登録するかサイドバーに入力してください。")
     else:
         client = OpenAI(api_key=api_key)
         
         with st.spinner('タコの足が情報を収集しています...'):
             try:
-                # AIへの命令文（プロンプト）
                 prompt = f"""
                 あなたは優秀なトレーダー「タコ」です。
                 銘柄コード【{stock_code}】について、以下の3つの視点からプロの分析を行ってください。
@@ -31,11 +30,10 @@ if st.button("タコ足分析を開始する"):
                 """
 
                 response = client.chat.completions.create(
-                    model="gpt-4o",  # または gpt-3.5-turbo
+                    model="gpt-4o", 
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
-                # 結果を表示
                 st.markdown("---")
                 st.subheader(f"📊 銘柄コード {stock_code} の分析結果")
                 st.write(response.choices[0].message.content)
