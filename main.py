@@ -5,7 +5,8 @@ st.set_page_config(page_title="タコ・トレード", page_icon="🐙")
 st.title("🐙 タコ・トレード分析室")
 
 # --- APIキーの設定 (Google Gemini用) ---
-api_key = st.secrets.get("OPENAI_API_KEY") or st.sidebar.text_input("Google API Key", type="password")
+# --- APIキーの設定 (ここをSecretsの名前と一致させる) ---
+api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Google API Key", type="password")
 
 if st.button("タコ足分析を開始する"):
     if not api_key:
