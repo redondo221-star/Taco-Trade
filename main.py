@@ -1,51 +1,51 @@
 import streamlit as st
 import google.generativeai as genai
 
-st.set_page_config(page_title="タコ・トレード", page_icon="🐙")
-st.title("🐙 タコ・トレード分析室")
+# ページ設定
+st.set_page_config(page_title="株価分析アシスタント", page_icon="📈")
+st.title("📈 株価分析システム")
 
-# --- 設定（サイドバー） ---
-st.sidebar.header("設定")
-api_key = (st.secrets.get("GEMINI_API_KEY") or 
-           st.sidebar.text_input("Google API Key", type="password"))
+# --- APIキーの設定 ---
+# Secretsから自動取得、なければサイドバーを表示
+api_key = st.secrets.get("GEMINI_API_KEY")
+if not api_key:
+    api_key = st.sidebar.text_input("Google API Keyを入力してください", type="password")
 
 # --- メイン画面 ---
-stock_code = st.text_input("分析したい銘柄コードを入力（例: 9759）", value="9759")
+st.markdown("指定した銘柄コードについて、AIが多角的な分析を行います。")
+stock_code = st.text_input("分析したい銘柄コード（4桁）", value="9759")
 
-if st.button("タコ足分析を開始する"):
+if st.button("分析を実行する"):
     if not api_key:
-        st.error("APIキーを入力してください。")
+        st.error("APIキーが設定されていません。StreamlitのSecretsに登録するか、サイドバーに入力してください。")
     else:
         try:
             genai.configure(api_key=api_key)
             
-            # 【究極の対策】利用可能なモデルを自動で検索して、最初に見つかった動くモデルを使う
+            # 利用可能なモデルを自動取得
             available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            target_model = next((m for m in available_models if 'flash' in m), available_models[0])
+            model = genai.GenerativeModel(model_name=target_model)
             
-            if not available_models:
-                st.error("利用可能なモデルが見つかりませんでした。APIキーの権限を確認してください。")
-            else:
-                # 優先的に使いたいモデルを探す（flashがあればそれを、なければ最初に見つかったものを採用）
-                target_model = next((m for m in available_models if 'flash' in m), available_models[0])
-                model = genai.GenerativeModel(model_name=target_model)
+            with st.spinner(f"銘柄コード {stock_code} を分析しています。少々お待ちください..."):
+                prompt = f"""
+                あなたはプロの証券アナリストです。
+                銘柄コード【{stock_code}】について、以下の項目に沿って論理的かつ丁寧に分析してください。
+
+                1. 【ファンダメンタル分析】: 業績の推移、配当利回り、企業の成長性について
+                2. 【テクニカル分析】: 現在の株価チャートの傾向、買い時・売り時の考察
+                3. 【リスク要因】: 投資する際に注意すべき懸念点や損切り目安
+
+                最後に、中長期的な視点での総合的な評価を述べてください。
+                回答は落ち着いた、信頼感のある日本語でお願いします。
+                """
                 
-                with st.spinner(f'タコが {target_model} を使って {stock_code} を調査中...'):
-                    prompt = f"""
-                    あなたは凄腕トレーダー「タコ」です。
-                    銘柄コード【{stock_code}】について、以下の3点からプロの分析を行ってください。
-                    1. 【ファンダメンタル】業績・配当
-                    2. 【テクニカル】売り時・買い時
-                    3. 【慎重派の視点】リスク要因
-                    結論はタコらしくユーモア（語尾に「〜だタコ」など）を交えて日本語で回答してください。
-                    """
-                    
-                    response = model.generate_content(prompt)
-                    
-                    st.markdown("---")
-                    st.subheader(f"📊 {stock_code} の分析結果")
-                    st.write(response.text)
-                    st.info(f"（使用中のモデル: {target_model}）")
+                response = model.generate_content(prompt)
+                
+                st.markdown("---")
+                st.subheader(f"📊 銘柄コード {stock_code} 分析レポート")
+                st.write(response.text)
                 
         except Exception as e:
-            st.error(f"タコの足がもつれました: {str(e)}")
-            st.info("APIキーを正しく入力し、Enterを押してからボタンをクリックしてください。")
+            st.error(f"分析中にエラーが発生しました: {str(e)}")
+            st.info("APIキーの設定や通信環境を確認してください。")
