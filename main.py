@@ -6,42 +6,50 @@ st.title("🐙 タコ・トレード分析室")
 
 # --- 設定（サイドバー） ---
 st.sidebar.header("設定")
-# Secretsになければ手動入力を促す
-api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Google API Key", type="password")
+# Secretsの名前が間違っていても動くように、複数の候補を確認するようにしました
+api_key = (st.secrets.get("GEMINI_API_KEY") or 
+           st.secrets.get("OPENAI_API_KEY") or 
+           st.sidebar.text_input("Google API Key", type="password"))
 
-# --- メイン画面：入力欄 ---
-# ボタンの外に出しておくことで、分析中も消えなくなります
+# --- メイン画面 ---
 stock_code = st.text_input("分析したい銘柄コードを入力（例: 9759）", value="9759")
 
 if st.button("タコ足分析を開始する"):
     if not api_key:
-        st.error("APIキーを入力してください。")
+        st.error("APIキーを入力してください。左のサイドバー、またはSecrets設定が必要です。")
     else:
-        # Google Geminiの設定
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # ローディング表示
-        with st.spinner(f'銘柄 {stock_code} をタコ足分析中... しばらくお待ちください。'):
-            try:
+        try:
+            # Google Geminiの初期化
+            genai.configure(api_key=api_key)
+            
+            # モデルを 'gemini-1.5-flash' に固定（これが一番速くて安定しています）
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            with st.spinner(f'銘柄 {stock_code} をタコ足分析中... 8本の足で調査しています。'):
+                # AIへの命令
                 prompt = f"""
-                あなたは優秀な投資家トレーダー「タコ」です。
+                あなたは凄腕の株式投資トレーダー「タコ」です。
                 銘柄コード【{stock_code}】について、以下の3つの視点からプロの分析を行ってください。
 
                 1. 【ファンダメンタルの足】: 業績、配当、成長性について
                 2. 【テクニカルの足】: 現在の株価水準、売り時・買い時の目安
-                3. 【慎重・空売りの足】: 最悪のシナリオ（リスク要因）と損切りポイント
+                3. 【慎重・空売りの足】: リスク要因と損切りポイント
 
-                最後に、中長期的な「総合評価」をタコらしくユーモアを交えて結論づけてください。
-                回答は日本語でお願いします。
+                最後に、中長期的な「総合評価」をタコらしくユーモア（「〜だタコ」など）を交えて結論づけてください。
+                回答は必ず日本語でお願いします。
                 """
 
+                # タイムアウト対策として、少し簡潔な回答を求める設定
                 response = model.generate_content(prompt)
                 
-                # 結果を表示
-                st.markdown("---")
-                st.subheader(f"📊 銘柄コード {stock_code} の分析結果")
-                st.markdown(response.text)
+                if response.text:
+                    st.markdown("---")
+                    st.subheader(f"📊 銘柄コード {stock_code} の分析結果")
+                    st.markdown(response.text)
+                else:
+                    st.warning("AIからの返答が空でした。もう一度試してみてください。")
                 
-            except Exception as e:
-                st.error(f"エラーが発生しました: {e}")
+        except Exception as e:
+            # 何が原因で止まっているか、詳細を表示します
+            st.error(f"タコの足がもつれました（エラー）: {str(e)}")
+            st.info("APIキーが正しいか、または有効期限が切れていないか確認してください。")
