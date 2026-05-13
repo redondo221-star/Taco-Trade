@@ -17,12 +17,11 @@ st.sidebar.header("分析設定")
 risk_level = st.sidebar.slider("リスク許容度", 1, 5, 3)
 investment_style = st.sidebar.multiselect("スタイル", ["短期", "中期", "長期"], default=["中期"])
 
+def # main.py の get_model 関数内を以下のように書き換えてみてください
 def get_model(api_key):
     genai.configure(api_key=api_key)
-    model_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    target = next((m for m in model_list if 'gemini-1.5-flash' in m), model_list[0])
-    return genai.GenerativeModel(model_name=target)
-
+    # 強制的に最も無料枠が広い「gemini-1.5-flash」を指定
+    return genai.GenerativeModel(model_name="gemini-1.5-flash")
 # --- 分析実行用ヘルパー（エラー回避付き） ---
 def safe_generate(model, prompt):
     try:
