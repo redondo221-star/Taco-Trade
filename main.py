@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import re
 import time
+from streamlit_mic_recorder import speech_to_text # 追加
 
 # ページ設定
 st.set_page_config(page_title="Tacoトレード", page_icon="🐙")
@@ -37,7 +38,6 @@ def safe_generate(model, prompt):
 # --- 1. 銘柄情報の入力 ---
 st.markdown("### 1. 銘柄情報の入力")
 
-# 【改善】直接入力と一括貼り付けの両方に対応
 input_mode = st.radio("入力方法を選択", ["銘柄を直接指定（1銘柄）", "フォルダから一括読み込み（複数銘柄）"], horizontal=True)
 
 if input_mode == "銘柄を直接指定（1銘柄）":
@@ -58,15 +58,13 @@ else:
                     prompt = f"以下の銘柄リストから買い・売りの注目株を抽出して:\n{folder_text}"
                     st.session_state['screen_result'] = safe_generate(model, prompt)
                     
-                    # 抽出ロジックの強化：コード＋名前に加え、名前のみの行も拾う
-                    matches = re.findall(r'(\d{4})\s+[^\s\d]+\s+([^\s\d]+)', folder_text) # 日経形式
+                    matches = re.findall(r'(\d{4})\s+[^\s\d]+\s+([^\s\d]+)', folder_text) 
                     if not matches:
-                        matches = re.findall(r'(\d{4})', folder_text) # コードのみ
+                        matches = re.findall(r'(\d{4})', folder_text) 
                     
                     if matches:
                         st.session_state['display_list'] = [f"{m[0]} {m[1]}" if isinstance(m, tuple) else m for m in matches]
                     else:
-                        # 最終手段：改行ごとにリスト化
                         st.session_state['display_list'] = [line.strip() for line in folder_text.split('\n') if line.strip()]
 
     with col2:
@@ -96,7 +94,6 @@ if 'display_list' in st.session_state and st.session_state['display_list']:
         st.session_state.chat_history = []
         with st.spinner("戦略策定中..."):
             model = get_model(api_key)
-            # リスト情報がある場合とない場合でプロンプトを分ける
             context = st.session_state.get('raw_list', '')
             prompt = f"""
             プロトレーダーとして【{selected_item}】のアドバイスをして。
@@ -116,7 +113,18 @@ if 'display_list' in st.session_state and st.session_state['display_list']:
             st.markdown(message["content"])
 
     if st.session_state.chat_history:
-        if user_query := st.chat_input("さらに質問..."):
+        # --- 音声入力ボタンの設置 ---
+        audio_text = speech_to_text(start_prompt="🎤 声で指示を出す", stop_prompt="停止", language='ja', key='trade_speech')
+        
+        # チャット入力
+        user_query = st.chat_input("さらに質問...")
+
+        # 音声入力の重複・無限ループ防止ロジック
+        if audio_text and (st.session_state.get("last_trade_audio") != audio_text):
+            user_query = audio_text
+            st.session_state.last_trade_audio = audio_text
+
+        if user_query:
             st.session_state.chat_history.append({"role": "user", "content": user_query})
             with st.chat_message("user"): st.markdown(user_query)
             with st.spinner("回答中..."):
