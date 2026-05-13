@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import re
-import time # 追加
+import time
 
 # ページ設定
 st.set_page_config(page_title="Tacoトレード", page_icon="🐙")
@@ -14,22 +14,25 @@ if not api_key:
 
 # --- サイドバー設定 ---
 st.sidebar.header("分析設定")
-risk_level = st.sidebar.slider("リスク許容度", 1, 5, 3)
+risk_level = st.sidebar.slider("リスク許容度", 1, 5, 3, help="1:慎重 ～ 5:積極的")
 investment_style = st.sidebar.multiselect("スタイル", ["短期", "中期", "長期"], default=["中期"])
 
-def # main.py の get_model 関数内を以下のように書き換えてみてください
+# 【修正】モデルを最も無料枠が広い Flash に固定
 def get_model(api_key):
     genai.configure(api_key=api_key)
-    # 強制的に最も無料枠が広い「gemini-1.5-flash」を指定
+    # 無料枠が最も多い 1.5-flash を直接指定します
     return genai.GenerativeModel(model_name="gemini-1.5-flash")
-# --- 分析実行用ヘルパー（エラー回避付き） ---
+
+# --- 分析実行用ヘルパー ---
 def safe_generate(model, prompt):
     try:
-        return model.generate_content(prompt).text
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        if "429" in str(e) or "ResourceExhausted" in str(e):
-            return "⚠️【回数制限エラー】現在リクエストが集中しています。1分ほど待ってから再度お試しください。"
-        return f"⚠️ エラーが発生しました: {str(e)}"
+        error_msg = str(e)
+        if "429" in error_msg or "ResourceExhausted" in error_msg:
+            return "⚠️【回数制限】Googleの無料枠を使い切りました。1分待つか、別プロジェクトのAPIキーをお試しください。"
+        return f"⚠️ エラーが発生しました: {error_msg}"
 
 # --- 1. 銘柄フォルダの読み込み ---
 st.markdown("### 1. 銘柄フォルダの読み込み")
@@ -41,8 +44,10 @@ with col1:
         if folder_text and api_key:
             with st.spinner("スキャン中..."):
                 model = get_model(api_key)
-                prompt = f"以下の銘柄リストから買い・売りの注目株を簡潔に抽出して:\n{folder_text}"
+                # スキャン時の負荷を下げるため、より簡潔なプロンプトに変更
+                prompt = f"以下の銘柄リストから買い・売りの注目株を各2〜3銘柄ずつ、理由と共に超簡潔に抽出して。リスト:\n{folder_text}"
                 st.session_state['screen_result'] = safe_generate(model, prompt)
+                # 銘柄名抽出
                 matches = re.findall(r'(\d{4})\s+[^\s\d]+\s+([^\s\d]+)', folder_text)
                 st.session_state['display_list'] = [f"{m[0]} {m[1]}" for m in matches] if matches else re.findall(r'\b\d{4}\b', folder_text)
 
@@ -51,13 +56,13 @@ with col2:
         if folder_text and api_key:
             with st.spinner("分析中..."):
                 model = get_model(api_key)
-                prompt = f"以下の銘柄リストを業種別に分類し、勢いや注意点を簡潔に分析して:\n{folder_text}"
+                prompt = f"以下の銘柄リストを業種別に分類し、今注目すべきセクターを1つだけ挙げて簡潔に理由を教えて:\n{folder_text}"
                 st.session_state['sector_result'] = safe_generate(model, prompt)
 
 if 'screen_result' in st.session_state:
     st.info(st.session_state['screen_result'])
 if 'sector_result' in st.session_state:
-    st.success("📊 セクター分析結果\n\n" + st.session_state['sector_result'])
+    st.success("📊 セクター分析\n\n" + st.session_state['sector_result'])
 
 # --- 2. 個別分析 & 対話 ---
 st.markdown("### 2. 個別銘柄の分析・対話")
@@ -71,10 +76,11 @@ if 'display_list' in st.session_state:
         st.session_state.chat_history = []
         with st.spinner("戦略策定中..."):
             model = get_model(api_key)
-            prompt = f"プロトレーダーとして【{selected_item}】のアドバイスをして。リスク許容度{risk_level}、スタイル{investment_style}、逆指値の目安も含めて簡潔に。"
+            prompt = f"プロトレーダーとして【{selected_item}】のアドバイスをして。リスク許容度{risk_level}、スタイル{investment_style}、逆指値の目安も含めて200文字程度で。"
             res_text = safe_generate(model, prompt)
             st.session_state.chat_history.append({"role": "assistant", "content": res_text})
 
+    # 対話履歴の表示
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -86,14 +92,14 @@ if 'display_list' in st.session_state:
             
             with st.spinner("回答中..."):
                 model = get_model(api_key)
-                chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history])
-                res_text = safe_generate(model, f"対話履歴を踏まえて回答して:\n{chat_context}")
+                # 履歴をすべて送ると重くなるため、直近のやり取りに絞る
+                chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history[-3:]])
+                res_text = safe_generate(model, f"これまでの流れを踏まえて簡潔に答えて:\n{chat_context}\n質問: {user_query}")
                 st.session_state.chat_history.append({"role": "assistant", "content": res_text})
-                with st.chat_message("assistant"): st.markdown(res_text)
+                st.rerun()
 
 # --- メモ機能 ---
 st.markdown("---")
 st.markdown("### 📓 投資メモ")
-memo = st.text_area("気づきをメモ", value=st.session_state.get("invest_memo", ""), height=100)
+memo = st.text_area("気づきをメモ（ブラウザを閉じると消えます）", value=st.session_state.get("invest_memo", ""), height=100)
 st.session_state.invest_memo = memo
-if st.button("保存"): st.success("保存しました。")
