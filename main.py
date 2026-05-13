@@ -17,11 +17,16 @@ st.sidebar.header("分析設定")
 risk_level = st.sidebar.slider("リスク許容度", 1, 5, 3, help="1:慎重 ～ 5:積極的")
 investment_style = st.sidebar.multiselect("スタイル", ["短期", "中期", "長期"], default=["中期"])
 
-# 【修正】モデルを最も無料枠が広い Flash に固定
+# 【修正版】最新の安定モデルを指定
 def get_model(api_key):
     genai.configure(api_key=api_key)
-    # 無料枠が最も多い 1.5-flash を直接指定します
-    return genai.GenerativeModel(model_name="gemini-1.5-flash")
+    # 2026年現在、最も無料枠が広く安定しているモデルを指定します
+    # 1.5-flashがエラーになる場合は、こちらを試してください
+    try:
+        return genai.GenerativeModel(model_name="gemini-2.5-flash")
+    except:
+        # 万が一上記が利用不可な場合、利用可能な最新のFlashを探す
+        return genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
 
 # --- 分析実行用ヘルパー ---
 def safe_generate(model, prompt):
