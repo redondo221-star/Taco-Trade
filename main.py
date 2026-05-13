@@ -5,7 +5,7 @@ import re
 # ページ設定
 st.set_page_config(page_title="Tacoトレード", page_icon="🐙")
 
-# 1. タイトル（赤いタコのイラスト付き）
+# 1. タイトル
 st.title("🐙 Tacoトレード")
 
 # --- APIキーの設定 ---
@@ -15,103 +15,112 @@ if not api_key:
 
 # --- サイドバー：設定 ---
 st.sidebar.header("分析設定")
-# 2. リスク許容度（5段階）
 risk_level = st.sidebar.slider("リスク許容度", 1, 5, 3, help="1:慎重 ～ 5:積極的")
-# 3. 投資スタイル
 investment_style = st.sidebar.multiselect(
-    "重視する投資スタイル",
-    ["短期（数日〜数週間）", "中期（数ヶ月〜1年）", "長期（数年以上）"],
-    default=["中期（数ヶ月〜1年）"]
+    "重視するスタイル",
+    ["短期", "中期", "長期"],
+    default=["中期"]
 )
 
-# --- 銘柄リストの入力 ---
-st.markdown("### 1. 銘柄フォルダの読み込み")
-folder_text = st.text_area(
-    "日経の銘柄フォルダ等の情報を貼り付けてください", 
-    height=100, 
-    placeholder="例: 9759 プライム NSD 2,844 ..."
-)
-
-# 共通のモデル取得関数
+# 共通モデル取得関数
 def get_model(api_key):
     genai.configure(api_key=api_key)
     model_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     target = next((m for m in model_list if 'gemini-1.5-flash' in m), model_list[0])
     return genai.GenerativeModel(model_name=target)
 
-# --- 4. スクリーニング機能 ---
-if st.button("全銘柄をスキャンして注目株を見つける"):
-    if not folder_text or not api_key:
-        st.error("リストの貼り付けとAPIキーの確認をお願いします。")
-    else:
-        try:
+# --- 1. 銘柄フォルダの読み込み ---
+st.markdown("### 1. 銘柄フォルダの読み込み")
+folder_text = st.text_area(
+    "日経の銘柄フォルダ情報を貼り付けてください", 
+    height=100, 
+    key="folder_input"
+)
+
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("全銘柄をスキャン"):
+        if folder_text and api_key:
             model = get_model(api_key)
-            with st.spinner("全銘柄の状態をチェックしています..."):
-                screen_prompt = f"""
-                以下のリストから全ての銘柄を確認し、テクニカル・ファンダメンタルズの観点から「今が買い時の銘柄」と「利益確定を検討すべき売り時の銘柄」を数銘柄ずつピックアップしてください。
-                
-                【リスト情報】:
-                {folder_text}
-                
-                【回答形式】:
-                落ち着いた丁寧な言葉で、以下の形式で簡潔に出力してください。
-                ■ 買い時注目銘柄
-                ・[コード] [企業名]：[一言理由と目安株価]
-                ■ 売り時注目銘柄
-                ・[コード] [企業名]：[一言理由と目安株価]
-                """
+            with st.spinner("スキャン中..."):
+                screen_prompt = f"以下のリストから、買い・売りの注目株を簡潔に抽出して:\n{folder_text}"
                 response = model.generate_content(screen_prompt)
                 st.session_state['screen_result'] = response.text
-                # 銘柄リストも更新
                 matches = re.findall(r'(\d{4})\s+[^\s\d]+\s+([^\s\d]+)', folder_text)
                 st.session_state['display_list'] = [f"{m[0]} {m[1]}" for m in matches] if matches else re.findall(r'\b\d{4}\b', folder_text)
-        except Exception as e:
-            st.error(f"スキャンエラー: {e}")
+
+# --- 新機能1: セクター別分析 ---
+with col2:
+    if st.button("セクター別の傾向を分析"):
+        if folder_text and api_key:
+            model = get_model(api_key)
+            with st.spinner("セクター分析中..."):
+                sector_prompt = f"以下のリストにある銘柄をセクター（業種）別に分類し、今どの業界に勢いがあるか、または注意が必要なセクターはどれか分析して:\n{folder_text}"
+                sector_res = model.generate_content(sector_prompt)
+                st.session_state['sector_result'] = sector_res.text
 
 if 'screen_result' in st.session_state:
     st.info(st.session_state['screen_result'])
+if 'sector_result' in st.session_state:
+    st.success("📊 セクター分析結果\n\n" + st.session_state['sector_result'])
 
-# --- 5. 銘柄選択と詳細分析 ---
-st.markdown("### 2. 個別銘柄の分析")
+# --- 2. 個別銘柄の分析 & 対話機能 ---
+st.markdown("### 2. 個別銘柄の分析・対話")
 if 'display_list' in st.session_state:
-    selected_item = st.selectbox("詳しく調べたい銘柄を選んでください", st.session_state['display_list'])
+    selected_item = st.selectbox("銘柄を選択", st.session_state['display_list'])
+
+    # チャット履歴の初期化
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
     if st.button("分析レポートを作成"):
+        st.session_state.chat_history = [] # 新しい銘柄の時は履歴リセット
         try:
             model = get_model(api_key)
-            with st.spinner("戦略を練っています..."):
-                # プロンプトの改善（親しみやすい言葉・簡潔さ・設定の反映）
-                prompt = f"""
-                あなたは親しみやすくも有能なプロトレーダーです。
-                【{selected_item}】について、以下の条件でアドバイスしてください。
-
-                【ユーザー設定】:
-                ・リスク許容度: 5段階中 {risk_level}
-                ・重視するスタイル: {', '.join(investment_style)}
-                ・リスト情報: {folder_text}
-
-                【回答のルール】:
-                1. 専門用語は使いつつも、親しみやすい丁寧な言葉遣いで。
-                2. 内容は簡潔にポイントを絞る。ただし、具体的な「目安株価（買い・利確・損切り）」は必ず数字で出すこと。
-                3. リスク許容度に応じた売買の積極性を反映させる。
-
-                まず「結論」を述べ、その後に「各期間の戦略」を短くまとめてください。
-                """
-                response = model.generate_content(prompt)
-                st.session_state['analysis_output'] = response.text
-                st.session_state['selected_stock'] = selected_item
+            # 新機能4: 逆指値の目安を含める指示
+            prompt = f"""
+            プロトレーダーとして【{selected_item}】のアドバイスをして。
+            条件: リスク許容度{risk_level}, スタイル{investment_style}
+            リスト背景: {folder_text}
+            
+            【必須項目】:
+            1. 結論と売買戦略（簡潔に）
+            2. 短期・中期・長期のターゲット株価
+            3. 逆指値（損切り）をする場合の具体的な設定株価の目安とその理由
+            """
+            response = model.generate_content(prompt)
+            st.session_state.chat_history.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            st.error(f"分析エラー: {e}")
+            st.error(f"エラー: {e}")
 
-# --- 分析結果の表示 ---
-if 'analysis_output' in st.session_state:
-    st.markdown("---")
-    st.subheader(f"📊 {st.session_state['selected_stock']} の戦略ノート")
-    st.markdown(st.session_state['analysis_output'])
-    
-    # 3. さらに知りたい場合の詳細表示ボタン
-    if st.button("もっと詳しく（詳細分析を表示）"):
-        with st.spinner("深掘りしています..."):
+    # 対話機能のUI
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if st.session_state.chat_history:
+        if user_query := st.chat_input("この銘柄についてさらに質問（例：今の逆指値をもっと攻めるなら？）"):
+            with st.chat_message("user"):
+                st.markdown(user_query)
+            st.session_state.chat_history.append({"role": "user", "content": user_query})
+            
             model = get_model(api_key)
-            detail_res = model.generate_content(f"先ほどの分析を踏まえ、{st.session_state['selected_stock']}について、業界内での立ち位置や今後の決算予定など、投資判断を後押しする詳細な情報を教えてください。")
-            st.write(detail_res.text)
+            # 履歴を踏まえた回答を生成
+            chat_context = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history])
+            res = model.generate_content(f"これまでの対話を踏まえて答えて:\n{chat_context}\nuser: {user_query}")
+            
+            with st.chat_message("assistant"):
+                st.markdown(res.text)
+            st.session_state.chat_history.append({"role": "assistant", "content": res.text})
+
+# --- 新機能2: メモ機能 ---
+st.markdown("---")
+st.markdown("### 📓 投資メモ（自分専用）")
+if "invest_memo" not in st.session_state:
+    st.session_state.invest_memo = ""
+
+memo_input = st.text_area("分析結果や気づいた戦略をメモしておけます（ブラウザを閉じると消去されます）", 
+                          value=st.session_state.invest_memo, height=100)
+st.session_state.invest_memo = memo_input
+if st.button("メモを保存（確定）"):
+    st.success("メモを一時保存しました。")
